@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flink传感器数据监控</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            color: white;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .connected {
+            background-color: #4caf50;
+        }
+        .disconnected {
+            background-color: #f44336;
+        }
+        .chart-container {
+            height: 400px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            padding: 15px;
+        }
+        .chart {
+            width: 100%;
+            height: 100%;
+        }
+        .data-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .data-card {
+            flex: 1;
+            min-width: 250px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 15px;
+        }
+        .data-card h3 {
+            margin-top: 0;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            color: #2196f3;
+        }
+        .data-list {
+            height: 300px;
+            overflow-y: auto;
+        }
+        .data-item {
+            padding: 10px;
+            border-bottom: 1px solid #f5f5f5;
+            font-size: 14px;
+        }
+        .data-item:hover {
+            background-color: #f5f5f5;
+        }
+        .data-device {
+            font-weight: bold;
+            color: #2196f3;
+        }
+        .data-value {
+            color: #4caf50;
+            font-weight: bold;
+        }
+        .data-time {
+            color: #9e9e9e;
+            font-size: 12px;
+        }
+        .config-panel {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #2196f3;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0b7dda;
+        }
+        .monitoring-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .monitoring-link a {
+            color: #2196f3;
+            text-decoration: none;
+        }
+        .monitoring-link a:hover {
+            text-decoration: underline;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Flink传感器数据实时监控</h1>
+            <div class="status-badge disconnected" id="connection-status">未连接</div>
+        </div>
+        
+        <div class="config-panel">
+            <h2>配置</h2>
+            <div class="form-group">
+                <label for="websocket-url">WebSocket地址</label>
+                <input type="text" id="websocket-url" value="ws://localhost:8080/wx-socket">
+            </div>
+            <div class="form-group">
+                <label for="max-points">最大数据点数</label>
+                <input type="number" id="max-points" value="100" min="10" max="1000">
+            </div>
+            <button id="connect-btn">连接</button>
+            <button id="disconnect-btn" disabled>断开</button>
+        </div>
+        
+        <div class="chart-container">
+            <div class="chart" id="main-chart"></div>
+        </div>
+        
+        <div class="data-container">
+            <div class="data-card">
+                <h3>最新传感器数据</h3>
+                <div id="latest-data" class="data-list"></div>
+            </div>
+            <div class="data-card">
+                <h3>连接统计</h3>
+                <div id="connection-stats">
+                    <p>状态: <span id="conn-status">未连接</span></p>
+                    <p>开始时间: <span id="conn-start">-</span></p>
+                    <p>运行时间: <span id="conn-uptime">-</span></p>
+                    <p>接收消息数: <span id="conn-messages">0</span></p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="monitoring-link">
+            <a href="/actuator" target="_blank">访问完整监控面板</a>
+        </div>
+        
+        <div class="footer">
+            <p>Flink传感器模拟器 &copy; 2023</p>
+        </div>
+    </div>
+    
+    <script>
+        const MAX_DATA_POINTS = 100;
+        let ws = null;
+        let chart = null;
+        let connStartTime = null;
+        let messageCount = 0;
+        let seriesData = {}; // 按设备ID存储数据
+        let uptimeInterval = null;
+        let reconnectTimeout = null;
+        let reconnectAttempt = 0;
+        const maxReconnectAttempts = 5;
+        
+        // 初始化ECharts图表
+        function initChart() {
+            const chartDom = document.getElementById('main-chart');
+            chart = echarts.init(chartDom);
+            
+            const option = {
+                animation: false, // 禁用动画以提高性能
+                title: {
+                    text: '传感器实时数据',
+                    subtext: '最后更新: -',
+                    left: 'center'
+                },
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'cross',
+                        label: {
+                            backgroundColor: '#6a7985'
+                        }
+                    }
+                },
+                legend: {
+                    data: [],
+                    top: 30
+                },
+                grid: {
+                    left: '3%',
+                    right: '4%',
+                    bottom: '3%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'time',
+                    axisLabel: {
+                        formatter: function(value) {
+                            const date = new Date(value);
+                            const hours = date.getHours().toString().padStart(2, '0');
+                            const minutes = date.getMinutes().toString().padStart(2, '0');
+                            const seconds = date.getSeconds().toString().padStart(2, '0');
+                            return `${hours}:${minutes}:${seconds}`;
+                        },
+                        hideOverlap: true
+                    },
+                    minInterval: 5 * 1000, // 5秒间隔
+                    splitLine: {
+                        show: false
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    name: '数值',
+                    scale: true,
+                    min: 'dataMin',
+                    max: 'dataMax',
+                    boundaryGap: ['10%', '10%']
+                },
+                series: []
+            };
+            
+            chart.setOption(option);
+            
+            // 自适应窗口大小
+            window.addEventListener('resize', () => {
+                chart.resize();
+            });
+        }
+        
+        // 创建渐变色
+        function createGradient(deviceId) {
+            // 根据设备ID选择不同的颜色
+            let colors = ['#5470c6', '#91cc75'];
+            
+            if (deviceId.endsWith('2')) {
+                colors = ['#ee6666', '#fc8452'];
+            } else if (deviceId.endsWith('3')) {
+                colors = ['#73c0de', '#3ba272'];
+            }
+            
+            return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: colors[0] },
+                { offset: 1, color: colors[1] }
+            ]);
+        }
+        
+        // 添加或更新数据
+        function updateChartData(data) {
+            // 如果是新设备，则添加新的数据系列
+            if (!seriesData[data.deviceId]) {
+                seriesData[data.deviceId] = [];
+                
+                const newSeries = {
+                    name: data.deviceId,
+                    type: 'line',
+                    smooth: true,
+                    symbol: 'circle',
+                    symbolSize: 6,
+                    sampling: 'average',
+                    areaStyle: {
+                        color: createGradient(data.deviceId),
+                        opacity: 0.3
+                    },
+                    itemStyle: {
+                        color: createGradient(data.deviceId)
+                    },
+                    data: []
+                };
+                
+                const option = chart.getOption();
+                option.series.push(newSeries);
+                option.legend[0].data.push(data.deviceId);
+                chart.setOption(option);
+            }
+            
+            // 添加数据点
+            const point = [data.timestamp, data.value.toFixed(2)];
+            seriesData[data.deviceId].push(point);
+            
+            // 限制每个系列的数据点数量
+            const maxPoints = parseInt(document.getElementById('max-points').value) || MAX_DATA_POINTS;
+            if (seriesData[data.deviceId].length > maxPoints) {
+                seriesData[data.deviceId].shift(); // 移除最旧的数据点
+            }
+            
+            // 更新图表
+            chart.setOption({
+                series: Object.keys(seriesData).map((deviceId, index) => ({
+                    name: deviceId,
+                    data: seriesData[deviceId]
+                })),
+                title: {
+                    subtext: `最后更新: ${formatTime(new Date())}`
+                }
+            });
+            
+            // 添加到最新数据列表
+            addToLatestData(data);
+        }
+        
+        // 添加到最新数据列表
+        function addToLatestData(data) {
+            const latestDataDiv = document.getElementById('latest-data');
+            const dateObj = new Date(data.timestamp);
+            
+            const dataItem = document.createElement('div');
+            dataItem.className = 'data-item';
+            dataItem.innerHTML = `
+                <span class="data-device">${data.deviceId}</span>: 
+                <span class="data-value">${data.value.toFixed(2)}</span>
+                <div class="data-time">${formatTime(dateObj)}</div>
+            `;
+            
+            // 添加到列表开头
+            latestDataDiv.insertBefore(dataItem, latestDataDiv.firstChild);
+            
+            // 限制列表项数量
+            if (latestDataDiv.children.length > 100) {
+                latestDataDiv.removeChild(latestDataDiv.lastChild);
+            }
+        }
+        
+        // 格式化时间
+        function formatTime(date) {
+            return date.toLocaleTimeString('zh-CN', {
+                hour12: false,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                fractionalSecondDigits: 3
+            });
+        }
+        
+        // 更新运行时间
+        function updateUptime() {
+            if (!connStartTime) return;
+            
+            const now = new Date();
+            const diff = now - connStartTime;
+            
+            const hours = Math.floor(diff / 3600000);
+            const minutes = Math.floor((diff % 3600000) / 60000);
+            const seconds = Math.floor((diff % 60000) / 1000);
+            
+            document.getElementById('conn-uptime').textContent = 
+                `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+        
+        // 连接WebSocket
+        function connectWebSocket() {
+            // 获取WebSocket URL
+            const url = document.getElementById('websocket-url').value;
+            
+            // 更新UI状态
+            document.getElementById('connect-btn').disabled = true;
+            document.getElementById('disconnect-btn').disabled = false;
+            document.getElementById('connection-status').textContent = '正在连接...';
+            document.getElementById('connection-status').className = 'status-badge disconnected';
+            document.getElementById('conn-status').textContent = '正在连接...';
+            
+            // 创建WebSocket连接
+            try {
+                ws = new WebSocket(url);
+                
+                // 连接建立时
+                ws.onopen = function() {
+                    console.log('WebSocket连接已建立');
+                    document.getElementById('connection-status').textContent = '已连接';
+                    document.getElementById('connection-status').className = 'status-badge connected';
+                    document.getElementById('conn-status').textContent = '已连接';
+                    
+                    // 记录连接开始时间
+                    connStartTime = new Date();
+                    document.getElementById('conn-start').textContent = formatTime(connStartTime);
+                    
+                    // 启动运行时间更新
+                    uptimeInterval = setInterval(updateUptime, 1000);
+                    
+                    // 重置重连尝试次数
+                    reconnectAttempt = 0;
+                };
+                
+                // 接收消息时
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        console.log('接收到数据:', data);
+                        
+                        // 更新消息计数
+                        messageCount++;
+                        document.getElementById('conn-messages').textContent = messageCount;
+                        
+                        // 更新图表数据
+                        updateChartData(data);
+                    } catch (error) {
+                        console.error('解析数据出错:', error);
+                    }
+                };
+                
+                // 连接关闭时
+                ws.onclose = function() {
+                    console.log('WebSocket连接已关闭');
+                    handleDisconnection(true);
+                };
+                
+                // 连接出错时
+                ws.onerror = function(error) {
+                    console.error('WebSocket错误:', error);
+                    handleDisconnection(true);
+                };
+                
+            } catch (error) {
+                console.error('创建WebSocket失败:', error);
+                handleDisconnection(false);
+            }
+        }
+        
+        // 断开WebSocket连接
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+            }
+            handleDisconnection(false);
+        }
+        
+        // 处理断开连接
+        function handleDisconnection(tryReconnect) {
+            // 清除重连定时器
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+            
+            // 清除运行时间更新
+            if (uptimeInterval) {
+                clearInterval(uptimeInterval);
+                uptimeInterval = null;
+            }
+            
+            // 更新UI状态
+            document.getElementById('connect-btn').disabled = false;
+            document.getElementById('disconnect-btn').disabled = true;
+            document.getElementById('connection-status').textContent = '未连接';
+            document.getElementById('connection-status').className = 'status-badge disconnected';
+            document.getElementById('conn-status').textContent = '未连接';
+            
+            // 尝试重连
+            if (tryReconnect && reconnectAttempt < maxReconnectAttempts) {
+                reconnectAttempt++;
+                const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30000); // 指数退避
+                
+                document.getElementById('connection-status').textContent = `重连中 (${reconnectAttempt}/${maxReconnectAttempts})...`;
+                document.getElementById('conn-status').textContent = `重连中 (${reconnectAttempt}/${maxReconnectAttempts})...`;
+                
+                reconnectTimeout = setTimeout(connectWebSocket, delay);
+            }
+        }
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化图表
+            initChart();
+            
+            // 绑定按钮事件
+            document.getElementById('connect-btn').addEventListener('click', connectWebSocket);
+            document.getElementById('disconnect-btn').addEventListener('click', disconnectWebSocket);
+            
+            // 检测WebSocket支持
+            if (!window.WebSocket) {
+                alert('您的浏览器不支持WebSocket，请使用现代浏览器访问本页面。');
+                document.getElementById('connect-btn').disabled = true;
+            }
+        });
+    </script>
+</body>
+</html> 

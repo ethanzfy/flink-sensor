@@ -1,0 +1,71 @@
+# 应用程序配置
+server:
+  port: 8080
+  compression:
+    enabled: true
+    mime-types: text/html,text/css,application/javascript,application/json
+    min-response-size: 2048
+
+spring:
+  application:
+    name: flink-sensor-simulator
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+
+# 模拟器配置
+simulator:
+  enabled: true
+  interval: 800  # 生成数据的间隔时间(毫秒)
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.example: DEBUG
+    org.springframework.web: INFO
+    org.springframework.web.socket: INFO
+
+# 管理端点配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"  # 暴露所有端点
+  endpoint:
+    health:
+      show-details: always
+    shutdown:
+      enabled: true  # 允许通过HTTP关闭应用
+
+# Actuator配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics,websocket-stats,data-cache,message-queue,exception-stats
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    distribution:
+      percentiles-histogram:
+        "[http.server.requests]": true
+        "[sensor.data.value]": true
+    tags:
+      application: ${spring.application.name}
+
+# 传感器应用配置
+sensor:
+  # 异常监控配置
+  monitoring:
+    exception-threshold: 10  # 异常次数阈值，超过此值将发出警告
+    queue-size-threshold: 100 # 队列积压阈值，超过此值将发出警告
+    cache-expiry: 300        # 缓存过期时间（秒）
+    metrics-collection-interval: 60 # 指标收集间隔（秒） 

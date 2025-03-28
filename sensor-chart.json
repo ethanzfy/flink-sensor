@@ -1,0 +1,10 @@
+{
+  "usingComponents": {
+    "ec-canvas": "../../ec-canvas/ec-canvas"
+  },
+  "navigationBarTitleText": "传感器实时数据",
+  "navigationBarBackgroundColor": "#2196f3",
+  "navigationBarTextStyle": "white",
+  "backgroundColor": "#f8f8f8",
+  "backgroundTextStyle": "dark"
+} 

@@ -1,0 +1,42 @@
+<!-- 测试面板组件 -->
+<view class="test-panel {{isExpanded ? 'expanded' : 'collapsed'}}">
+  <!-- 测试面板标题栏 -->
+  <view class="panel-header" bindtap="togglePanel">
+    <view class="panel-title">测试面板</view>
+    <view class="panel-toggle">{{isExpanded ? '收起' : '展开'}}</view>
+  </view>
+  
+  <!-- 测试面板内容区 -->
+  <view class="panel-content" wx:if="{{isExpanded}}">
+    <view class="test-options">
+      <view 
+        wx:for="{{testOptions}}" 
+        wx:key="id" 
+        class="test-option"
+        data-id="{{item.id}}"
+        bindtap="runTest"
+      >
+        <view class="option-name">{{item.name}}</view>
+        <view class="option-desc">{{item.description}}</view>
+      </view>
+    </view>
+    
+    <!-- 测试进度指示 -->
+    <view class="test-progress" wx:if="{{testInProgress}}">
+      <view class="progress-text">测试运行中...</view>
+    </view>
+    
+    <!-- 上次测试结果 -->
+    <view class="test-result" wx:if="{{lastTestResult}}">
+      <view class="result-title">上次测试结果</view>
+      <view class="result-info">
+        <text>测试: {{lastTestResult.id === 'all' ? '所有测试' : 
+            testOptions.find(i => i.id === lastTestResult.id).name}}</text>
+        <text>时间: {{lastTestResult.timestamp}}</text>
+        <text class="result-status {{lastTestResult.success ? 'success' : 'failure'}}">
+          {{lastTestResult.success ? '通过' : '失败'}}
+        </text>
+      </view>
+    </view>
+  </view>
+</view> 

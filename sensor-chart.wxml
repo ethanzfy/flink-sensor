@@ -1,0 +1,37 @@
+<view class="container">
+  <!-- 连接状态徽章 -->
+  <view class="status-badge {{connected ? 'connected' : 'disconnected'}}">
+    <text>{{connected ? '已连接' : '未连接'}}</text>
+  </view>
+  
+  <!-- 连接信息显示 -->
+  <view class="connection-info">
+    <text>设备总数: {{deviceCount || 0}}</text>
+    <text>最新数据时间: {{lastUpdateTime || '暂无数据'}}</text>
+  </view>
+  
+  <!-- 图表容器 -->
+  <view class="chart-container">
+    <ec-canvas id="sensor-chart" canvas-id="sensor-chart" ec="{{ ec }}"></ec-canvas>
+  </view>
+  
+  <!-- 错误信息显示区域 -->
+  <view class="error-container" wx:if="{{errorMessage}}">
+    <text class="error-message">{{errorMessage}}</text>
+    <button class="retry-button" bindtap="retryConnection">重试连接</button>
+  </view>
+  
+  <!-- 数据列表显示最新的几条数据 -->
+  <view class="data-list">
+    <view class="data-list-header">
+      <text>最新数据</text>
+    </view>
+    <block wx:for="{{latestData}}" wx:key="timestamp">
+      <view class="data-item">
+        <text class="device-id">{{item.deviceId}}</text>
+        <text class="value">{{item.value.toFixed(2)}}</text>
+        <text class="timestamp">{{item.formattedTime}}</text>
+      </view>
+    </block>
+  </view>
+</view> 
